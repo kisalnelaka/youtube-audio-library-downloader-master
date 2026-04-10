@@ -1,7 +1,7 @@
 /**
  * Queue.js - Limited queue class for Javascript
  *
- * @author Marco Trulla <dev@marcotrulla.it>
+ * @author Modified by Kisal
  * @version 0.0.1
  * @licence MIT
  * @copyright Copyright ©2017 MarcoTrulla.it

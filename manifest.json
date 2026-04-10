@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "YouTube Audio Library Downloader",
   "version": "0.0.1",
-  "author": "Marco Trulla",
+  "author": "Modified by Kisal",
   "permissions": ["downloads", "notifications"],
   "host_permissions": [
     "https://www.youtube.com/audiolibrary/*",

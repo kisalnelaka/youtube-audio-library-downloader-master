@@ -1,43 +1,43 @@
 # YouTube Audio Library Downloader
 
-This extension helps to batch download audio and effect tracks from YouTube Audio Library.
- 
-### Load the extension
+This project is a Chrome extension designed to batch download audio and sound effect tracks from the YouTube Audio Library. It has been extensively modified and improved to suit specific needs, including better filename handling, metadata creation, and genre/mood categorization.
 
-1. Install dependencies: `npm install`
-2. Run build: `npm run build`
-3. Load unpacked extension from the `dist` folder, or load the project root directly once the first build is complete.
+### Features
 
-### How it works?
+- Batch download audio tracks with sanitized filenames.
+- Automatically generate metadata files for each track.
+- Categorize tracks by genre and mood dynamically.
+- Manage concurrent downloads to prevent bandwidth saturation.
 
-The extensions looks for matching `https://www.youtube.com/audiolibrary/*` links and injects
-a script which adds a link to the bottom of the track list manager.
- 
-The new link (`Download All Tracks`) will add all detected audio tracks into the browser's 
-download manager which will immediately starts downloading the tracks.
+### How to Use
 
-### What to do before the download?
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+2. **Build the Extension**:
+   ```bash
+   npm run build
+   ```
+3. **Load the Extension**:
+   - Open Chrome and navigate to `chrome://extensions/`.
+   - Enable "Developer mode".
+   - Click "Load unpacked" and select the `dist` folder.
 
-Since this extension looks for available links into the track list manager, all that it's 
- needed to do is to set the track manager filters for the kind of music/effect you are 
- interested into, scroll down the list until no more tracks are loaded, then finally click
- on the new added link. Waiting for the downloads are done, enjoy them!
- 
-### WTF... Another downloader?
+### How It Works
 
-I've searched for something able to do that on Chrome/Opera and didn't found anything simple
-and immediate for it. I didn't want to install some big download manger extension, so I've 
-decided to develop something easy as this, good to accomplish this job and nothing else.
+The extension injects a script into the YouTube Audio Library page, adding a "Download All Tracks" button. This button queues all visible tracks for download. To use it:
 
-### Hey! I've decided to download a gazillion of soudtracks! What about my bandwidth?
+1. Set your desired filters (e.g., genre, mood) in the YouTube Audio Library.
+2. Scroll down to load all tracks.
+3. Click the "Download All Tracks" button.
+4. Wait for the downloads to complete.
 
-True. The first time I've tested the extension I did forget about concurrent downloads and 
-finally saturated my bandwidth. That's why in this first version I've used a simple queue to
-manage the downloads, and limit them to a restricted number until previous downloads not
-finished yet.
+### Notes
 
-### Should I really use this crap?
+- This project was heavily modified to improve functionality and usability.
+- It is designed for personal use and works effectively for its intended purpose.
 
-Well. It's a project I did for my personal use and for what I needed it works!
+### Disclaimer
 
-Feel free to use it and try it.
+This project is not affiliated with or endorsed by YouTube. Use it responsibly and ensure compliance with YouTube's terms of service.
