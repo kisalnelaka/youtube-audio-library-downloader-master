@@ -139,17 +139,32 @@
                         try{ ev.preventDefault(); ev.stopImmediatePropagation(); }catch(e){}
                         try{
                             const url = el.href;
-                            // try to gather row metadata
-                            const row = el.closest('div#row-container') || el.closest('div');
-                            const titleEl = row && row.querySelector && row.querySelector('#title');
-                            const genreEl = row && row.querySelector && row.querySelector('#genre');
-                            const moodEl = row && row.querySelector && row.querySelector('#mood');
+                            // scan row for metadata
+                            const row = el.closest('ytmus-audio-library-track-row, .track-row, div#row-container, [role="row"]') || el.closest('div');
+                            const titleEl = row ? row.querySelector('#title, .title, [id*="title"], [aria-label*="title"]') : null;
+                            const genreEl = row ? row.querySelector('#genre, .genre, [id*="genre"]') : null;
+                            const moodEl = row ? row.querySelector('#mood, .mood, [id*="mood"]') : null;
+                            
+                            let title = titleEl ? titleEl.textContent.trim() : '';
+                            let genre = genreEl ? genreEl.textContent.trim() : '';
+                            let mood = moodEl ? moodEl.textContent.trim() : '';
+                            
+                            // fallback content scan
+                            if (row && (!genre || !mood)) {
+                                const textNodes = Array.from(row.querySelectorAll('div, span')).map(n => n.textContent.trim()).filter(t => t.length > 2);
+                                const YT_GENRES = ['dance', 'electronic', 'ambient', 'cinematic', 'classical', 'country', 'folk', 'hip hop', 'rap', 'jazz', 'blues', 'kids', 'pop', 'reggae', 'rock', 'soul', 'r&b', 'world'];
+                                const YT_MOODS = ['angry', 'bright', 'calm', 'dark', 'dramatic', 'funky', 'happy', 'inspirational', 'romantic', 'sad'];
+                                textNodes.forEach(txt => {
+                                    const low = txt.toLowerCase();
+                                    if (!genre && YT_GENRES.some(g => low.includes(g))) genre = txt;
+                                    else if (!mood && YT_MOODS.some(m => low.includes(m))) mood = txt;
+                                });
+                                if (!title) title = textNodes[0] || '';
+                            }
+                            
                             const txt = row ? (row.textContent||'') : '';
                             let duration = 0; const m = txt.match(/(\d{1,2}:\d{2})/);
                             if (m) { const parts = m[1].split(':').map(Number); duration = parts[0]*60 + parts[1]; }
-                            const title = titleEl ? titleEl.textContent.trim() : '';
-                            const genre = genreEl ? genreEl.textContent.trim() : '';
-                            const mood = moodEl ? moodEl.textContent.trim() : '';
                             const slug = (s=> (s||'').toString().trim().toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'_'))(title).slice(0,40);
                             const gk = (genre||'').toLowerCase().split(/[^a-z0-9]+/)[0] || 'cinematic';
                             const mk = (mood||'').toLowerCase().split(/[^a-z0-9]+/)[0] || 'calm';
