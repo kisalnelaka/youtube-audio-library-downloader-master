@@ -39,8 +39,34 @@
                 const url = (typeof input === 'string')? input : (input && input.url) || resp.url;
                 if(/creator_music\/get_tracks|videoplayback|youtubei\/v1\/creator_music/i.test(url)){
                     resp.clone().text().then(function(text){
+                        // Try to extract structured data first
+                        let items = [];
+                        try {
+                            const json = JSON.parse(text);
+                            // Look for patterns like { track: { title: ..., downloadUrl: ... } }
+                            (function findTracks(o) {
+                                if (!o || typeof o !== 'object') return;
+                                if (o.downloadUrl && (o.title || o.trackTitle)) {
+                                    const title = o.title || o.trackTitle;
+                                    const genre = o.genre || o.trackGenre || 'cinematic';
+                                    const mood = o.mood || o.trackMood || 'calm';
+                                    items.push({
+                                        url: o.downloadUrl,
+                                        filename: `assets/music/${genre}/${mood}/${title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.mp3`,
+                                        metadata: { title, genre, mood }
+                                    });
+                                } else {
+                                    Object.values(o).forEach(findTracks);
+                                }
+                            })(json);
+                        } catch(e) {}
+
                         const urls = extractUrlsFromText(text);
-                        if(urls && urls.length) post({ type: 'tracks', urls: Array.from(new Set(urls)) });
+                        if (items.length) {
+                             post({ type: 'tracks', urls: items.map(i => i.url), items: items });
+                        } else if(urls && urls.length) {
+                             post({ type: 'tracks', urls: Array.from(new Set(urls)) });
+                        }
                     }).catch(()=>{});
                 }
             }catch(e){}
@@ -64,8 +90,34 @@
                         const url = this._ytal_url || '';
                         if(/creator_music\/get_tracks|videoplayback|youtubei\/v1\/creator_music/i.test(url)){
                             let text = this.responseText || '';
+                            
+                            // Try to extract structured data first
+                            let items = [];
+                            try {
+                                const json = JSON.parse(text);
+                                (function findTracks(o) {
+                                    if (!o || typeof o !== 'object') return;
+                                    if (o.downloadUrl && (o.title || o.trackTitle)) {
+                                        const title = o.title || o.trackTitle;
+                                        const genre = o.genre || o.trackGenre || 'cinematic';
+                                        const mood = o.mood || o.trackMood || 'calm';
+                                        items.push({
+                                            url: o.downloadUrl,
+                                            filename: `assets/music/${genre}/${mood}/${title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.mp3`,
+                                            metadata: { title, genre, mood }
+                                        });
+                                    } else {
+                                        Object.values(o).forEach(findTracks);
+                                    }
+                                })(json);
+                            } catch(e) {}
+
                             const urls = extractUrlsFromText(text);
-                            if(urls && urls.length) post({ type: 'tracks', urls: Array.from(new Set(urls)) });
+                            if (items.length) {
+                                post({ type: 'tracks', urls: items.map(i => i.url), items: items });
+                            } else if(urls && urls.length) {
+                                post({ type: 'tracks', urls: Array.from(new Set(urls)) });
+                            }
                         }
                     }
                 }catch(e){}

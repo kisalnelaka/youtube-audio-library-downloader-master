@@ -133,138 +133,134 @@ if (location.hostname === 'studio.youtube.com') {
     window.addEventListener('message', function (e) {
         if (!e.data || e.data.source !== 'ytal-hook') return;
         const payload = e.data.payload || {};
-        // append debug overlay messages
-        try{
-            const panel = document.getElementById('ytal-debug');
-            if(panel){
-                const line = document.createElement('div');
-                line.style.marginBottom = '6px';
-                line.textContent = '[' + (payload.type||'msg') + '] ' + (payload.urls ? payload.urls.length + ' urls' : JSON.stringify(payload).slice(0,120));
-                panel.appendChild(line);
-                panel.scrollTop = panel.scrollHeight;
-            }
-        }catch(e){}
-            if (payload.type === 'tracks' && ((Array.isArray(payload.items) && payload.items.length) || (Array.isArray(payload.urls) && payload.urls.length))) {
-                if (Array.isArray(payload.items) && payload.items.length) {
-                    console.log('ytal-cs: received structured items payload', payload.items.length);
-                    chrome.runtime.sendMessage({ command: Commands.Download, data: payload.items }, function(response){
-                        if (chrome.runtime.lastError) console.error('ytal-cs: sendMessage error', chrome.runtime.lastError.message);
-                    });
-                    return;
-                }
-                console.log('ytal-cs: received tracks payload', payload.urls.length);
-            // Build a map of visible rows keyed by normalized title
-            function norm(s){ return (s||'').toString().trim().toLowerCase().replace(/\s+/g,' '); }
-            function slug(s){ return (s||'').toString().trim().toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'_'); }
+        const Commands = { Download: 'DOWNLOAD', Notify: 'NOTIFY' };
 
+        if (payload.type === 'tracks') {
+            const rawUrls = payload.urls || [];
+            const rawItems = payload.items || [];
+            
+            // 1. Build a map of visible rows for metadata enrichment
+            const norm = (s) => (s || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
+            const slug = (s) => (s || '').toString().trim().toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '_');
+            
             const rows = Array.from(document.querySelectorAll('div#row-container'));
             const rowsMap = {};
             rows.forEach(r => {
                 const titleEl = r.querySelector('#title');
                 const genreEl = r.querySelector('#genre');
                 const moodEl = r.querySelector('#mood');
-                // try to find duration by pattern mm:ss in text nodes
                 let duration = 0;
                 const txt = r.textContent || '';
                 const m = txt.match(/(\d{1,2}:\d{2})/);
                 if (m) {
                     const parts = m[1].split(':').map(Number);
-                    duration = parts[0]*60 + parts[1];
+                    duration = parts[0] * 60 + parts[1];
                 }
                 const title = titleEl ? titleEl.textContent.trim() : '';
                 const genre = genreEl ? genreEl.textContent.trim() : '';
                 const mood = moodEl ? moodEl.textContent.trim() : '';
-                if (title) rowsMap[ norm(title) ] = { title, genre, mood, duration };
+                if (title) rowsMap[norm(title)] = { title, genre, mood, duration };
             });
 
-            // mapping helpers
-            function mapGenre(g){
-                if (!g) return 'cinematic';
-                g = g.toLowerCase();
-                if(/dance|electronic|edm|electro/.test(g)) return 'electronic';
-                if(/ambient|chill|downtempo/.test(g)) return 'ambient';
-                if(/orchestral|classical|score|cinematic|epic/.test(g)) return /cinematic|epic/.test(g) ? 'cinematic' : 'orchestral';
-                if(/lo-?fi|lo fi|lofi/.test(g)) return 'lo-fi';
-                if(/jazz|blues|folk|country/.test(g)) return 'ambient';
-                return 'electronic';
-            }
-            function mapMood(m){
-                if(!m) return 'calm';
-                m = m.toLowerCase();
-                if(/inspir|motiva|energi|bright|upbeat/.test(m)) return 'motivation';
-                if(/calm|soft|relax|ambient|chill/.test(m)) return 'calm';
-                if(/sad|emotional|melanchol|slow/.test(m)) return 'emotional';
-                if(/dark|angry|tense|dramatic/.test(m)) return 'dark';
-                if(/energi|fast|upbeat|bright/.test(m)) return 'energetic';
-                return 'calm';
+            // 2. Strict Categories & Mapping
+            const STRICT_GENRES = ['cinematic', 'ambient', 'dark', 'electronic', 'lo-fi', 'orchestral'];
+            const STRICT_MOODS = ['motivation', 'calm', 'emotional', 'energetic', 'dark'];
+
+            function mapToStrict(val, list, fallback) {
+                if (!val) return fallback;
+                val = val.toLowerCase();
+                for (const s of list) {
+                    if (val.includes(s) || s.includes(val)) return s;
+                }
+                if (list === STRICT_GENRES) {
+                    if (/dance|edm|electro|hip|pop|reggae|rock/.test(val)) return 'electronic';
+                    if (/piano|classical|score/.test(val)) return 'orchestral';
+                    if (/chill|jazz|folk|country/.test(val)) return 'ambient';
+                    if (/epic|dramatic/.test(val)) return 'cinematic';
+                }
+                if (list === STRICT_MOODS) {
+                    if (/inspir|bright|upbeat/.test(val)) return 'motivation';
+                    if (/relax|soft/.test(val)) return 'calm';
+                    if (/sad|melanchol|slow/.test(val)) return 'emotional';
+                    if (/angry|tense/.test(val)) return 'dark';
+                    if (/fast|heavy/.test(val)) return 'energetic';
+                }
+                return fallback;
             }
 
-            // build download items by matching title inside url (title= param)
-            const items = [];
+            // 3. Process all incoming tracks
+            const finalItems = [];
             const counters = {};
-            let fallbackSeq = 0;
-            payload.urls.forEach(url => {
-                try{
-                    const u = new URL(url);
-                    let t = u.searchParams.get('title') || u.searchParams.get('name') || '';
-                    if(!t){
-                        // try to extract title from path
-                        const p = u.pathname || '';
-                        t = decodeURIComponent((p.split('/').pop()||'').replace(/\.[a-z0-9]+$/i,''));
-                    }
-                    const normt = norm(t);
-                    const row = rowsMap[normt];
-                    if(row) {
-                        // duration check
-                        if(row.duration && row.duration < 30) return;
-                        // heuristic skip vocals: title contains feat or ft.
-                        if(/\bfeat\b|\bft\b|\bvocal\b|\blyrics\b/i.test(row.title)) return;
+            const processedUrls = new Set();
 
-                        const genreKey = mapGenre(row.genre);
-                        const moodKey = mapMood(row.mood);
-                        // base name
-                        const short = slug(row.title).slice(0,40);
-                        counters[genreKey] = counters[genreKey] || {};
-                        counters[genreKey][moodKey] = (counters[genreKey][moodKey] || 0) + 1;
-                        const seq = String(counters[genreKey][moodKey]).padStart(2,'0');
-                        const filenameBase = `${genreKey}_${moodKey}_${short}_${seq}`;
-                        const mp3name = `assets/music/${genreKey}/${moodKey}/${filenameBase}.mp3`;
-                        const metadata = {
-                            genre: genreKey,
-                            mood: moodKey,
-                            energy: 'unknown',
-                            bpm: 'unknown',
-                            usage: [moodKey]
-                        };
-                        items.push({ url: url, filename: mp3name, metadata: metadata });
-                    } else {
-                        // fallback: no row match, but still construct a structured filename
-                        fallbackSeq++;
-                        const shortTitle = t ? slug(t).slice(0, 50) : 'track';
-                        const fallbackName = `assets/music/electronic/calm/fallback_${String(fallbackSeq).padStart(3, '0')}_${shortTitle || 'unknown'}.mp3`;
-                        const fallbackMetadata = processRow({ genre: 'electronic', mood: 'calm' }, { title: t, url });
-                        console.log('ytal-cs: Using fallback filename and metadata:', fallbackName, fallbackMetadata);
-                        items.push(fallbackMetadata);
-                    }
-                }catch(e){
-                    // total fallback if anything fails
-                    fallbackSeq++;
-                    const fallbackName = `assets/music/electronic/calm/fallback_${String(fallbackSeq).padStart(3,'0')}_error.mp3`;
-                    items.push({ url: url, filename: fallbackName });
+            // Merge items and urls
+            const candidates = [...rawItems];
+            rawUrls.forEach(url => {
+                if (!candidates.find(c => c.url === url)) {
+                    candidates.push({ url: url });
                 }
             });
 
-            if(items.length) {
-                console.log('ytal-cs: sending', items.length, 'download items to background');
-                // Add logging to trace message sending and errors
-                console.log('ytal-cs: sending message to background script', { command: Commands.Download, data: items });
-                chrome.runtime.sendMessage({ command: Commands.Download, data: items }, function(response) {
-                    if (chrome.runtime.lastError) {
-                        console.error('ytal-cs: sendMessage error', chrome.runtime.lastError.message);
-                    } else {
-                        console.log('ytal-cs: message sent successfully', response);
+            candidates.forEach(cand => {
+                try {
+                    if (processedUrls.has(cand.url)) return;
+                    processedUrls.add(cand.url);
+
+                    const u = new URL(cand.url);
+                    let urlTitle = u.searchParams.get('title') || u.searchParams.get('name') || '';
+                    if (!urlTitle) {
+                        const p = u.pathname || '';
+                        urlTitle = decodeURIComponent((p.split('/').pop() || '').replace(/\.[a-z0-9]+$/i, ''));
                     }
+
+                    // Metadata from row or previous item
+                    const row = rowsMap[norm(cand.metadata ? cand.metadata.title : urlTitle)];
+                    const title = (row && row.title) || (cand.metadata && cand.metadata.title) || urlTitle || 'track';
+                    const duration = (row && row.duration) || (cand.metadata && cand.metadata.duration) || 31;
+                    const genre = (row && row.genre) || (cand.metadata && cand.metadata.genre) || 'cinematic';
+                    const mood = (row && row.mood) || (cand.metadata && cand.metadata.mood) || 'calm';
+
+                    // Rule: QUALITY FILTER
+                    if (duration < 30) return;
+                    if (/\bfeat\b|\bft\b|\bvocal\b|\blyrics\b/i.test(title)) return;
+
+                    const genreKey = mapToStrict(genre, STRICT_GENRES, 'electronic');
+                    const moodKey = mapToStrict(mood, STRICT_MOODS, 'calm');
+
+                    // Rule: FILE NAMING FORMAT <genre>_<mood>_<descriptor>_<id>.mp3
+                    const descriptor = slug(title).slice(0, 40) || 'track';
+                    counters[genreKey] = counters[genreKey] || {};
+                    counters[genreKey][moodKey] = (counters[genreKey][moodKey] || 0) + 1;
+                    const seq = String(counters[genreKey][moodKey]).padStart(2, '0');
+                    const filenameBase = `${genreKey}_${moodKey}_${descriptor}_${seq}`;
+                    
+                    const mp3name = `assets/music/${genreKey}/${moodKey}/${filenameBase}.mp3`;
+
+                    // Rule: METADATA FILE (MANDATORY)
+                    const metadata = {
+                        genre: genreKey,
+                        mood: moodKey,
+                        energy: (/energi|heavy|bright/.test(mood.toLowerCase())) ? 'high' : 'medium',
+                        usage: [moodKey, "story", "facts"]
+                    };
+
+                    finalItems.push({ url: cand.url, filename: mp3name, metadata: metadata });
+                } catch (e) {
+                    console.error('ytal-cs: mapping error', e);
+                }
+            });
+
+            if (finalItems.length) {
+                console.log('ytal-cs: sending', finalItems.length, 'strict items to background');
+                chrome.runtime.sendMessage({ command: Commands.Download, data: finalItems }, function (response) {
+                    if (chrome.runtime.lastError) console.error('ytal-cs: sendMessage error', chrome.runtime.lastError.message);
                 });
+                
+                finalItems.forEach(item => {
+                    if (item.metadata.genre) uniqueGenres.add(item.metadata.genre);
+                    if (item.metadata.mood) uniqueMoods.add(item.metadata.mood);
+                });
+                writeGenresAndMoodsToFile();
             }
         }
     }, false);
@@ -445,16 +441,6 @@ function writeGenresAndMoodsToFile() {
     });
 }
 
-// Call writeGenresAndMoodsToFile after processing all tracks
-if (items.length) {
-    console.log('ytal-cs: sending', items.length, 'download items to background');
-    chrome.runtime.sendMessage({ command: Commands.Download, data: items }, function(response) {
-        if (chrome.runtime.lastError) {
-            console.error('ytal-cs: sendMessage error', chrome.runtime.lastError.message);
-        }
-    });
-    writeGenresAndMoodsToFile();
-}
 
 // Update logic to extract genre and mood from row data
 function processRow(row, track) {

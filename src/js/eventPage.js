@@ -18,9 +18,9 @@ try{
 
     /**
      * Buffer for URLs to download
-     * @type {string[]}
+     * @type {object[]}
      */
-    let dlList;
+    let dlList = [];
     /**
      * Amount of concurrent downloads (and size of the used mutex queue).
      * @type {number}
@@ -141,17 +141,21 @@ try{
                 if (msg.data && msg.data.length) {
                     console.log('ytal-bg: received download command, items:', msg.data.length);
                     // dedupe incoming urls by url
-                    const seen = new Set();
-                    const items = [];
                     msg.data.forEach(d => {
                         const url = (typeof d === 'string') ? d : (d && d.url);
                         if (!url) return;
-                        if (seen.has(url)) return;
-                        seen.add(url);
-                        items.push(d);
+                        
+                        // Check if already in queue or processed
+                        const index = dlList.findIndex(item => (typeof item === 'string' ? item : item.url) === url);
+                        if (index === -1) {
+                            dlList.push(d);
+                        } else if (typeof d === 'object' && d.metadata && index >= dlCounter) {
+                             // If it's already in queue but this one has metadata, upgrade the one in queue (if not yet processed)
+                             dlList[index] = d;
+                             console.log('ytal-bg: upgraded item in queue with metadata', url);
+                        }
                     });
-                    dlList = items;
-                    dlCounter = 0;
+
                     if (!downloadsListenerRegistered) {
                         chrome.downloads.onChanged.addListener(onStateChangeCheck);
                         downloadsListenerRegistered = true;
