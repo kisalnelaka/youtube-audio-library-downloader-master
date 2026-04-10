@@ -1,0 +1,12 @@
+{
+  "name": "youtube-audio-downloader",
+  "version": "0.0.1",
+  "author": "Marco Trulla <dev@marcotrulla.it>",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "eslint": "^3.19.0"
+  }
+}
